@@ -89,28 +89,37 @@ class MapaMentalGenerator:
     def _convert_dict_to_tree(self, node_dict, level=0):
         result = []
         for key, value in node_dict.items():
+            
+            # Solo buscamos imágenes para el nodo central y sus hijos directos (level 0 y 1)
+            # Esto evita hacer 40+ búsquedas seguidas lo cual causaría un timeout en el servidor
+            image_url = None
+            if level <= 1:
+                image_url = self.fetch_image_url(str(key))
+                
             node = {
                 'concept': str(key),
                 'children': [],
                 'level': level,
-                'image_url': self.fetch_image_url(str(key))
+                'image_url': image_url
             }
             if isinstance(value, dict):
                 node['children'] = self._convert_dict_to_tree(value, level + 1)
             elif isinstance(value, list):
                 for item in value:
+                    child_image = self.fetch_image_url(str(item)) if level + 1 <= 1 else None
                     node['children'].append({
                         'concept': str(item),
                         'children': [],
                         'level': level + 1,
-                        'image_url': self.fetch_image_url(str(item))
+                        'image_url': child_image
                     })
             elif value:
+                child_image = self.fetch_image_url(str(value)) if level + 1 <= 1 else None
                 node['children'].append({
                     'concept': str(value),
                     'children': [],
                     'level': level + 1,
-                    'image_url': self.fetch_image_url(str(value))
+                    'image_url': child_image
                 })
             result.append(node)
         return result
@@ -148,19 +157,21 @@ class MapaMentalGenerator:
         cell.set('parent', '1')
         
         geom = ET.SubElement(cell, 'mxGeometry')
-        
+        # Ajuste de tamaño
         w = self.node_width
         h = self.node_height
-        if node.get('level', 0) == 0:
+        is_root = node.get('level', 0) == 0
+        if is_root:
             w += 40
             h += 40
             
-        # Si es imagen, reducimos un poco el alto geométrico para que el texto debajo no sume muchísimo
+        # Si es imagen, reducimos el área geométrica para la imagen
         if image_url:
-            geom.set('width', str(60))
-            geom.set('height', str(60))
-            geom.set('x', str(cx - 30))
-            geom.set('y', str(cy - 30))
+            img_size = 90 if is_root else 60
+            geom.set('width', str(img_size))
+            geom.set('height', str(img_size))
+            geom.set('x', str(cx - img_size//2))
+            geom.set('y', str(cy - img_size//2))
         else:
             geom.set('x', str(cx - w//2))
             geom.set('y', str(cy - h//2))

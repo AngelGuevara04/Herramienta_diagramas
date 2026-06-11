@@ -28,19 +28,22 @@ def generar_manual():
         
     try:
         if tipo == 'cuadro_sinoptico':
-            # Evaluamos el string como diccionario
-            chart_dict = ast.literal_eval(contenido)
+            try:
+                chart_dict = json.loads(contenido)
+            except:
+                chart_dict = ast.literal_eval(contenido)
             xml_data = generar_cuadro_sinoptico(chart_dict)
             filename = 'cuadro_sinoptico.drawio'
             
         elif tipo == 'mapa_conceptual':
-            # Texto directo
             xml_data = generar_mapa_conceptual(contenido)
             filename = 'mapa_conceptual.drawio'
             
         elif tipo == 'mapa_mental':
-            # Evaluamos el string como diccionario
-            chart_dict = ast.literal_eval(contenido)
+            try:
+                chart_dict = json.loads(contenido)
+            except:
+                chart_dict = ast.literal_eval(contenido)
             xml_data = generar_mapa_mental(chart_dict)
             filename = 'mapa_mental.drawio'
             
