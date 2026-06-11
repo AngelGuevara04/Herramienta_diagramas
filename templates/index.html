@@ -312,11 +312,19 @@
                     body: JSON.stringify({ tipo, texto })
                 });
 
-                const data = await response.json();
-
                 if (!response.ok) {
-                    throw new Error(data.error || 'Error desconocido al contactar a la IA');
+                    const text = await response.text();
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.error || 'Error desconocido');
+                    } catch (e) {
+                        if (e.message.includes('Error desconocido') || e.message === text) throw e;
+                        // Si no es JSON (ej. HTML por timeout de Render)
+                        throw new Error(`Error de servidor (${response.status}): El proceso tardó demasiado o falló internamente.`);
+                    }
                 }
+
+                const data = await response.json();
 
                 const estructura = data.resultado;
 

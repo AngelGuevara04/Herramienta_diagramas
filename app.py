@@ -61,8 +61,12 @@ def generar_manual():
     except Exception as e:
         return f"Error al procesar: {str(e)}", 500
 
+AVAILABLE_MODELS = None
+
 @app.route('/generar_ia', methods=['POST'])
 def generar_ia():
+    global AVAILABLE_MODELS
+    
     if not GEMINI_API_KEY:
         return jsonify({"error": "No hay API Key configurada"}), 500
         
@@ -83,7 +87,7 @@ def generar_ia():
             --conector1--> Concepto Hijo 1
               --subconector--> Subconcepto 2.1
             
-            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas, detalles y descripciones breves para cada uno, logrando al menos 3 o 4 niveles de profundidad para que el diagrama quede rico en información.
+            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas y descripciones breves, logrando de 2 a 3 niveles de profundidad para que el diagrama quede rico en información pero muy conciso.
             
             Usa exclusivamente ese formato de indentación (2 espacios por nivel) y las flechas --conector-->.
             No agregues código markdown (como ```), solo texto plano.
@@ -96,7 +100,7 @@ def generar_ia():
             Convierte el siguiente texto en un diccionario de Python estricto (JSON-like pero válido en Python).
             El diccionario debe representar un árbol jerárquico de los conceptos.
             
-            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas, detalles, ramas adicionales y descripciones para cada uno, logrando al menos 3 o 4 niveles de profundidad para que el diagrama quede sumamente rico y completo.
+            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas y ramas adicionales para cada uno, logrando 2 o 3 niveles de profundidad. Mantén los textos de los nodos cortos y directos.
             
             Reglas:
             - Solo devuelve el diccionario, empezando por {{ y terminando por }}.
@@ -108,18 +112,19 @@ def generar_ia():
             {texto}
             """
             
-        try:
-            model_info = genai.list_models()
-            available_models = [m.name for m in model_info if 'generateContent' in m.supported_generation_methods]
-        except Exception as e:
-            return jsonify({"error": f"Error verificando tu API Key: {str(e)}"}), 500
+        if AVAILABLE_MODELS is None:
+            try:
+                model_info = genai.list_models()
+                AVAILABLE_MODELS = [m.name for m in model_info if 'generateContent' in m.supported_generation_methods]
+            except Exception as e:
+                return jsonify({"error": f"Error verificando tu API Key: {str(e)}"}), 500
             
         resultado = None
         errores = []
         working_model = None
         
         # Filtramos para usar solo los modelos de texto puros
-        text_models = [m for m in available_models if "vision" not in m and "embedding" not in m and "aqa" not in m]
+        text_models = [m for m in AVAILABLE_MODELS if "vision" not in m and "embedding" not in m and "aqa" not in m]
         
         # Le damos prioridad a flash y pro
         text_models.sort(key=lambda x: (1 if 'flash' in x else (2 if 'pro' in x else 3)))
@@ -137,7 +142,7 @@ def generar_ia():
                 
         if not resultado:
             detalles = " | ".join(errores[:2])
-            return jsonify({"error": f"No se pudo generar con ninguno de los {len(text_models)} modelos disponibles en tu cuenta. Detalles: {detalles}"}), 500
+            return jsonify({"error": f"No se pudo generar con ninguno de los modelos. Detalles: {detalles}"}), 500
         
         # Limpiar posibles bloques markdown si la IA los pone a pesar de la instrucción
         if resultado.startswith("```"):
