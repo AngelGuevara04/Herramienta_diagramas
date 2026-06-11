@@ -104,19 +104,34 @@ def generar_ia():
             {texto}
             """
             
+        try:
+            model_info = genai.list_models()
+            available_models = [m.name for m in model_info if 'generateContent' in m.supported_generation_methods]
+        except Exception as e:
+            return jsonify({"error": f"Error verificando tu API Key: {str(e)}"}), 500
+            
         resultado = None
-        for m_name in ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']:
+        errores = []
+        
+        # Filtramos para usar solo los modelos de texto puros
+        text_models = [m for m in available_models if "vision" not in m and "embedding" not in m and "aqa" not in m]
+        
+        # Le damos prioridad a flash y pro
+        text_models.sort(key=lambda x: (1 if 'flash' in x else (2 if 'pro' in x else 3)))
+        
+        for m_name in text_models:
             try:
                 model = genai.GenerativeModel(m_name)
                 response = model.generate_content(prompt)
                 resultado = response.text.strip()
                 break
             except Exception as e:
-                print(f"Error con modelo {m_name}: {e}")
+                errores.append(f"{m_name}: {str(e)}")
                 continue
                 
         if not resultado:
-            return jsonify({"error": "No se pudo generar la estructura. Verifica que tu API Key tenga acceso a los modelos de Gemini."}), 500
+            detalles = " | ".join(errores[:2])
+            return jsonify({"error": f"No se pudo generar con ninguno de los {len(text_models)} modelos disponibles en tu cuenta. Detalles: {detalles}"}), 500
         
         # Limpiar posibles bloques markdown si la IA los pone a pesar de la instrucción
         if resultado.startswith("```"):
