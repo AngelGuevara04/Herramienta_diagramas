@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Herramienta de Diagramas Premium</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --success-color: #10b981;
+            --radius: 12px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            padding: 2rem 0;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(30,41,59,0) 0%, rgba(30,41,59,0.8) 100%);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: -webkit-linear-gradient(45deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            background-color: var(--surface-color);
+            border-radius: var(--radius);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            margin-bottom: 3rem;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 1.2rem;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .tab:hover {
+            color: var(--text-main);
+            background: rgba(30, 41, 59, 1);
+        }
+
+        .tab.active {
+            color: var(--text-main);
+            background: var(--surface-color);
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .content {
+            padding: 2rem;
+            display: none;
+        }
+
+        .content.active {
+            display: block;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        select, textarea {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', monospace;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease;
+        }
+
+        select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 250px;
+        }
+
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-ai {
+            background: linear-gradient(45deg, #8b5cf6, #3b82f6);
+        }
+
+        .btn-ai:hover {
+            background: linear-gradient(45deg, #7c3aed, #2563eb);
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            color: #f87171;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 1rem;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(59, 130, 246, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>NeuroDiagrams</h1>
+        <p class="subtitle">Generador Inteligente de Diagramas .drawio</p>
+    </header>
+
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('ai')">✨ Modo IA (Texto libre)</div>
+            <div class="tab" onclick="switchTab('manual')">⚙️ Modo Manual (Código)</div>
+        </div>
+
+        <!-- MODO IA -->
+        <div id="tab-ai" class="content active">
+            {% if not has_api_key %}
+            <div class="alert" style="display: block; background: rgba(245, 158, 11, 0.1); border-color: #f59e0b; color: #fbbf24;">
+                <strong>Aviso:</strong> No se ha detectado la GEMINI_API_KEY en el servidor. La IA no funcionará hasta que se configure.
+            </div>
+            {% endif %}
+            
+            <div class="form-group">
+                <label for="ai-tipo">Tipo de Diagrama</label>
+                <select id="ai-tipo">
+                    <option value="mapa_mental">Mapa Mental (Estructura radial con imágenes automáticas)</option>
+                    <option value="mapa_conceptual">Mapa Conceptual (Nodos verticales con conectores)</option>
+                    <option value="cuadro_sinoptico">Cuadro Sinóptico (Llaves horizontales)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="ai-texto">Pega tus apuntes, un párrafo o una lista de temas:</label>
+                <textarea id="ai-texto" placeholder="Ejemplo: La célula es la unidad biológica. Tiene tres partes principales: la membrana (protege), el citoplasma (contiene organelos) y el núcleo (almacena ADN)..."></textarea>
+            </div>
+
+            <div class="alert" id="ai-alert"></div>
+            
+            <button class="btn btn-ai" id="btn-generar-ia" onclick="generarConIA()">Generar Estructura con IA</button>
+            
+            <div class="loading" id="ai-loading">
+                <div class="spinner"></div> Analizando texto y construyendo diagrama...
+            </div>
+        </div>
+
+        <!-- MODO MANUAL -->
+        <div id="tab-manual" class="content">
+            <form action="/generar_manual" method="POST" id="manual-form">
+                <div class="form-group">
+                    <label for="manual-tipo">Tipo de Diagrama</label>
+                    <select name="tipo" id="manual-tipo">
+                        <option value="mapa_mental">Mapa Mental (Diccionario Python)</option>
+                        <option value="mapa_conceptual">Mapa Conceptual (Formato con flechas --&gt;)</option>
+                        <option value="cuadro_sinoptico">Cuadro Sinóptico (Diccionario Python)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="manual-contenido">Estructura del diagrama:</label>
+                    <textarea name="contenido" id="manual-contenido" placeholder="Pega aquí la estructura en formato de diccionario de Python o con formato de flechas dependiendo del generador..."></textarea>
+                </div>
+                
+                <button type="submit" class="btn">Generar y Descargar .drawio</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'ai') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('tab-ai').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('tab-manual').classList.add('active');
+            }
+        }
+
+        async function generarConIA() {
+            const tipo = document.getElementById('ai-tipo').value;
+            const texto = document.getElementById('ai-texto').value;
+            const btn = document.getElementById('btn-generar-ia');
+            const loading = document.getElementById('ai-loading');
+            const alert = document.getElementById('ai-alert');
+
+            if (!texto.trim()) {
+                alert.style.display = 'block';
+                alert.innerText = "Por favor, ingresa un texto para analizar.";
+                return;
+            }
+
+            alert.style.display = 'none';
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+
+            try {
+                // 1. Pedir a la IA que genere la estructura
+                const response = await fetch('/generar_ia', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tipo, texto })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Error desconocido al contactar a la IA');
+                }
+
+                const estructura = data.resultado;
+
+                // 2. Pasar la estructura generada al formulario manual y enviarlo para descargar
+                document.getElementById('manual-tipo').value = tipo;
+                document.getElementById('manual-contenido').value = estructura;
+                document.getElementById('manual-form').submit();
+
+            } catch (error) {
+                alert.style.display = 'block';
+                alert.innerText = "Error: " + error.message;
+            } finally {
+                btn.style.display = 'block';
+                loading.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
