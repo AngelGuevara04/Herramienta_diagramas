@@ -1,6 +1,5 @@
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-from datetime import datetime, timezone
 import urllib.request
 import urllib.parse
 import json
@@ -10,12 +9,10 @@ class MapaMentalGenerator:
         self.id_counter = 2
         self.node_width = 160
         self.node_height = 80
-        self.vertical_spacing = 180
-        self.horizontal_spacing = 200
+        self.horizontal_spacing = 220
+        self.vertical_spacing = 20
     
     def fetch_image_url(self, query):
-        """Fetches an image URL from Wikimedia Commons using the query text."""
-        # Limpiar query
         clean_query = query.split(":")[0].strip()
         if len(clean_query) > 50:
             clean_query = clean_query[:50]
@@ -42,14 +39,12 @@ class MapaMentalGenerator:
                     pages = data['query']['pages']
                     for page_id in pages:
                         if 'imageinfo' in pages[page_id]:
-                            img_url = pages[page_id]['imageinfo'][0]['url']
-                            return img_url
+                            return pages[page_id]['imageinfo'][0]['url']
         except Exception as e:
             pass
         return None
 
     def _convert_dict_to_tree(self, node_dict, level=0):
-        """Convierte un dict a un árbol de nodos internamente"""
         result = []
         for key, value in node_dict.items():
             node = {
@@ -82,83 +77,99 @@ class MapaMentalGenerator:
         if not node.get('children'):
             return self.node_height
         children_height = sum(self.calculate_subtree_height(child) for child in node['children'])
-        total_spacing = (len(node['children']) - 1) * 20
+        total_spacing = (len(node['children']) - 1) * self.vertical_spacing
         return max(self.node_height, children_height + total_spacing)
 
-    def process_node_horizontal(self, node, x, y, cells, is_root=False):
+    def draw_node(self, cells, node, x, y):
         concept = node.get('concept', '')
         image_url = node.get('image_url')
         node_id = self.id_counter
         self.id_counter += 1
         
-        colors = ['#f5f5f5', '#dae8fc', '#d5e8d4', '#fff2cc', '#ffe6cc', '#f8cecc']
-        strokes = ['#666666', '#6c8ebf', '#82b366', '#d6b656', '#d79b00', '#b85450']
-        level = node.get('level', 0)
-        
-        fill_color = colors[min(level, len(colors) - 1)]
-        stroke_color = strokes[min(level, len(strokes) - 1)]
+        # El centro tiene un color diferente
+        if node.get('level', 0) == 0:
+            fill_color = '#ffe6cc'
+            stroke_color = '#d79b00'
+        else:
+            colors = ['#f5f5f5', '#dae8fc', '#d5e8d4', '#e1d5e7', '#f8cecc']
+            strokes = ['#666666', '#6c8ebf', '#82b366', '#9673a6', '#b85450']
+            lvl = node.get('level', 1) - 1
+            fill_color = colors[lvl % len(colors)]
+            stroke_color = strokes[lvl % len(strokes)]
         
         cell = ET.SubElement(cells, 'mxCell')
         cell.set('id', str(node_id))
         
-        # HTML label to include image
         if image_url:
             html_value = f'<div style="text-align:center"><img src="{image_url}" width="40" height="40" style="border-radius:5px; margin-bottom:5px;"/><br><b>{concept}</b></div>'
         else:
             html_value = f'<div style="text-align:center"><b>{concept}</b></div>'
             
+        # Forma más elíptica o redondeada para los mapas mentales
+        rounded_style = "rounded=1;arcSize=30;" if node.get('level',0) > 0 else "shape=ellipse;"
+        
+        cell.set('style', f'{rounded_style}whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;')
         cell.set('value', html_value)
-        cell.set('style', f'rounded=1;whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;')
         cell.set('vertex', '1')
         cell.set('parent', '1')
         
-        geometry = ET.SubElement(cell, 'mxGeometry')
-        geometry.set('x', str(x))
-        geometry.set('y', str(y))
-        geometry.set('width', str(self.node_width))
-        geometry.set('height', str(self.node_height))
-        geometry.set('as', 'geometry')
+        geom = ET.SubElement(cell, 'mxGeometry')
+        geom.set('x', str(x))
+        geom.set('y', str(y))
         
-        if node.get('children'):
-            num_children = len(node['children'])
-            child_x = x + self.horizontal_spacing
+        # El nodo central puede ser un poco más grande
+        if node.get('level', 0) == 0:
+            geom.set('width', str(self.node_width + 40))
+            geom.set('height', str(self.node_height + 20))
+        else:
+            geom.set('width', str(self.node_width))
+            geom.set('height', str(self.node_height))
+        geom.set('as', 'geometry')
+        
+        return node_id, stroke_color
+
+    def draw_connector(self, cells, source_id, target_id, sx, sy, tx, ty, stroke_color):
+        line_id = self.id_counter
+        self.id_counter += 1
+        line_cell = ET.SubElement(cells, 'mxCell')
+        line_cell.set('id', str(line_id))
+        # Curvo como un mapa mental
+        line_cell.set('style', f'edgeStyle=bezierEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor={stroke_color};')
+        line_cell.set('edge', '1')
+        line_cell.set('parent', '1')
+        line_cell.set('source', str(source_id))
+        line_cell.set('target', str(target_id))
+        
+        line_geom = ET.SubElement(line_cell, 'mxGeometry')
+        line_geom.set('relative', '1')
+        line_geom.set('as', 'geometry')
+
+    def process_branch(self, children_list, start_x, center_y, cells, parent_id, direction=1):
+        """ direction: 1 para crecer a la derecha, -1 para crecer a la izquierda """
+        if not children_list:
+            return
             
-            children_heights = [self.calculate_subtree_height(child) for child in node['children']]
-            total_height = sum(children_heights) + (num_children - 1) * 20
+        children_heights = [self.calculate_subtree_height(child) for child in children_list]
+        total_height = sum(children_heights) + (len(children_list) - 1) * self.vertical_spacing
+        
+        current_y = center_y - total_height // 2
+        
+        for i, child in enumerate(children_list):
+            child_height = children_heights[i]
+            child_y = current_y + child_height // 2 - self.node_height // 2
             
-            start_y = y + self.node_height // 2 - total_height // 2
-            current_y = start_y
+            # Dibujar nodo
+            child_id, s_color = self.draw_node(cells, child, start_x, child_y)
             
-            for i, child in enumerate(node['children']):
-                child_height = children_heights[i]
-                child_y = current_y + child_height // 2 - self.node_height // 2
+            # Dibujar conector desde padre
+            self.draw_connector(cells, parent_id, child_id, 0, 0, 0, 0, s_color)
+            
+            # Recursion para los nietos, misma dirección
+            if child.get('children'):
+                next_x = start_x + (self.horizontal_spacing * direction)
+                self.process_branch(child['children'], next_x, child_y + self.node_height//2, cells, child_id, direction)
                 
-                # Curvy line connector
-                line_id = self.id_counter
-                self.id_counter += 1
-                line_cell = ET.SubElement(cells, 'mxCell')
-                line_cell.set('id', str(line_id))
-                line_cell.set('style', f'edgeStyle=bezierEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor={stroke_color};')
-                line_cell.set('edge', '1')
-                line_cell.set('parent', '1')
-                
-                line_geom = ET.SubElement(line_cell, 'mxGeometry')
-                line_geom.set('relative', '1')
-                line_geom.set('as', 'geometry')
-                
-                source = ET.SubElement(line_geom, 'mxPoint')
-                source.set('x', str(x + self.node_width))
-                source.set('y', str(y + self.node_height // 2))
-                source.set('as', 'sourcePoint')
-                
-                target = ET.SubElement(line_geom, 'mxPoint')
-                target.set('x', str(child_x))
-                target.set('y', str(child_y + self.node_height // 2))
-                target.set('as', 'targetPoint')
-                
-                self.process_node_horizontal(child, child_x, child_y, cells, False)
-                
-                current_y += child_height + 20
+            current_y += child_height + self.vertical_spacing
 
     def generate_drawio_xml(self, dict_structure):
         self.id_counter = 2
@@ -190,9 +201,42 @@ class MapaMentalGenerator:
         
         tree = self._convert_dict_to_tree(dict_structure)
         if tree:
-            # Render starting at 50, 50
-            # Root is usually the first element in the tree
-            self.process_node_horizontal(tree[0], 50, 300, root_cell, True)
+            root_node = tree[0]
+            
+            # Centro del sol
+            center_x = 800
+            center_y = 600
+            
+            root_id, _ = self.draw_node(root_cell, root_node, center_x, center_y)
+            
+            children = root_node.get('children', [])
+            
+            # Dividir los hijos mitad a la derecha y mitad a la izquierda
+            mid = (len(children) + 1) // 2
+            right_children = children[:mid]
+            left_children = children[mid:]
+            
+            # Procesar derecha
+            if right_children:
+                self.process_branch(
+                    right_children, 
+                    center_x + self.node_width + 40 + self.horizontal_spacing - 100, 
+                    center_y + self.node_height // 2, 
+                    root_cell, 
+                    root_id, 
+                    direction=1
+                )
+                
+            # Procesar izquierda
+            if left_children:
+                self.process_branch(
+                    left_children, 
+                    center_x - self.horizontal_spacing, 
+                    center_y + self.node_height // 2, 
+                    root_cell, 
+                    root_id, 
+                    direction=-1
+                )
             
         xml_str = ET.tostring(root_elem, encoding='utf-8')
         dom = minidom.parseString(xml_str)

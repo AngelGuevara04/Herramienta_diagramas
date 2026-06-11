@@ -75,7 +75,7 @@ def generar_ia():
         return jsonify({"error": "Faltan datos"}), 400
         
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         if tipo == 'mapa_conceptual':
             prompt = f"""
