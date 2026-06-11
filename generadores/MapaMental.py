@@ -61,6 +61,7 @@ class MapaMentalGenerator:
             "format": "json",
             "generator": "search",
             "gsrsearch": f"intitle:{clean_query} OR {clean_query}",
+            "gsrnamespace": 6,  # 6 es el namespace para Archivos/Imágenes en Wikipedia
             "gsrlimit": 1,
             "prop": "imageinfo",
             "iiprop": "url"
@@ -88,12 +89,12 @@ class MapaMentalGenerator:
 
     def _convert_dict_to_tree(self, node_dict, level=0):
         result = []
-        for key, value in node_dict.items():
+        for i, (key, value) in enumerate(node_dict.items()):
             
-            # Solo buscamos imágenes para el nodo central y sus hijos directos (level 0 y 1)
-            # Esto evita hacer 40+ búsquedas seguidas lo cual causaría un timeout en el servidor
+            # Imágenes seguras en el tema principal y primer nivel.
+            # En subtemas profundos, aplicamos imagen cada 3 cuadros para cumplir "cada 2 o 3 cuadros" y evitar timeout
             image_url = None
-            if level <= 1:
+            if level <= 1 or (level > 1 and i % 3 == 0):
                 image_url = self.fetch_image_url(str(key))
                 
             node = {
@@ -105,8 +106,10 @@ class MapaMentalGenerator:
             if isinstance(value, dict):
                 node['children'] = self._convert_dict_to_tree(value, level + 1)
             elif isinstance(value, list):
-                for item in value:
-                    child_image = self.fetch_image_url(str(item)) if level + 1 <= 1 else None
+                for j, item in enumerate(value):
+                    child_image = None
+                    if (level + 1) <= 1 or ((level + 1) > 1 and j % 3 == 0):
+                        child_image = self.fetch_image_url(str(item))
                     node['children'].append({
                         'concept': str(item),
                         'children': [],
@@ -114,7 +117,10 @@ class MapaMentalGenerator:
                         'image_url': child_image
                     })
             elif value:
-                child_image = self.fetch_image_url(str(value)) if level + 1 <= 1 else None
+                # Si es un valor simple hijo directo (raro en el dict generado por IA, pero posible)
+                child_image = None
+                if (level + 1) <= 1:
+                    child_image = self.fetch_image_url(str(value))
                 node['children'].append({
                     'concept': str(value),
                     'children': [],
