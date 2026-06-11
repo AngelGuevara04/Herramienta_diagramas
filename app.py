@@ -83,6 +83,8 @@ def generar_ia():
             --conector1--> Concepto Hijo 1
               --subconector--> Subconcepto 2.1
             
+            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas, detalles y descripciones breves para cada uno, logrando al menos 3 o 4 niveles de profundidad para que el diagrama quede rico en información.
+            
             Usa exclusivamente ese formato de indentación (2 espacios por nivel) y las flechas --conector-->.
             No agregues código markdown (como ```), solo texto plano.
             
@@ -93,6 +95,8 @@ def generar_ia():
             prompt = f"""
             Convierte el siguiente texto en un diccionario de Python estricto (JSON-like pero válido en Python).
             El diccionario debe representar un árbol jerárquico de los conceptos.
+            
+            INSTRUCCIÓN ESPECIAL: TU TAREA ES EXPANDIR Y DESARROLLAR estos puntos. Si el usuario te da un tema y 5 subtemas, debes crear sub-subtemas, detalles, ramas adicionales y descripciones para cada uno, logrando al menos 3 o 4 niveles de profundidad para que el diagrama quede sumamente rico y completo.
             
             Reglas:
             - Solo devuelve el diccionario, empezando por {{ y terminando por }}.
@@ -112,6 +116,7 @@ def generar_ia():
             
         resultado = None
         errores = []
+        working_model = None
         
         # Filtramos para usar solo los modelos de texto puros
         text_models = [m for m in available_models if "vision" not in m and "embedding" not in m and "aqa" not in m]
@@ -124,6 +129,7 @@ def generar_ia():
                 model = genai.GenerativeModel(m_name)
                 response = model.generate_content(prompt)
                 resultado = response.text.strip()
+                working_model = m_name
                 break
             except Exception as e:
                 errores.append(f"{m_name}: {str(e)}")

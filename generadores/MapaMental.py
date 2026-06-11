@@ -14,15 +14,22 @@ class MapaMentalGenerator:
         self.radius_step = 250
         self.image_cache = {}
         
-        # Intentamos configurar Gemini para mejorar búsquedas de imágenes si hay API key
+        # Configuramos Gemini de manera segura
         self.gemini_model = None
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if api_key:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=api_key)
-                # Usar flash por velocidad
-                self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Buscamos un modelo de texto válido dinámicamente
+                model_info = genai.list_models()
+                available_models = [m.name for m in model_info if 'generateContent' in m.supported_generation_methods]
+                text_models = [m for m in available_models if "vision" not in m and "embedding" not in m and "aqa" not in m]
+                text_models.sort(key=lambda x: (1 if 'flash' in x else (2 if 'pro' in x else 3)))
+                
+                if text_models:
+                    self.gemini_model = genai.GenerativeModel(text_models[0])
             except:
                 pass
 
@@ -35,7 +42,10 @@ class MapaMentalGenerator:
                 return response.text.strip()
             except:
                 pass
-        return concept.split(":")[0].strip()
+        
+        # Si falla la IA, tomamos solo las primeras 2 palabras para tener más chance de encontrar algo
+        words = concept.split()
+        return " ".join(words[:2]).strip(":")
 
     def fetch_image_url(self, query):
         if query in self.image_cache:
@@ -72,6 +82,7 @@ class MapaMentalGenerator:
                             return img_url
         except Exception as e:
             pass
+            
         self.image_cache[query] = None
         return None
 
@@ -110,7 +121,6 @@ class MapaMentalGenerator:
         node_id = self.id_counter
         self.id_counter += 1
         
-        # El centro tiene un color diferente
         if node.get('level', 0) == 0:
             fill_color = '#ffe6cc'
             stroke_color = '#d79b00'
@@ -124,31 +134,39 @@ class MapaMentalGenerator:
         cell = ET.SubElement(cells, 'mxCell')
         cell.set('id', str(node_id))
         
-        # CSS avanzado para recorte de imagen (object-fit cover y border-radius 50% circular)
+        # Usamos shape=image si hay imagen, de lo contrario ellipse
         if image_url:
-            html_value = f'<div style="text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;"><img src="{image_url}" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px; border: 2px solid {stroke_color};"/><b style="font-size:11px;">{concept}</b></div>'
+            style = f'shape=image;image={image_url};verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor={fill_color};strokeColor={stroke_color};'
+            html_value = concept
         else:
-            html_value = f'<div style="text-align:center; padding:10px;"><b>{concept}</b></div>'
+            style = f'shape=ellipse;whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;'
+            html_value = concept
             
-        # Forma circular pura para mapas mentales radiales
-        cell.set('style', f'shape=ellipse;whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;')
+        cell.set('style', style)
         cell.set('value', html_value)
         cell.set('vertex', '1')
         cell.set('parent', '1')
         
         geom = ET.SubElement(cell, 'mxGeometry')
         
-        # Ajuste de tamaño
         w = self.node_width
         h = self.node_height
         if node.get('level', 0) == 0:
             w += 40
             h += 40
             
-        geom.set('x', str(cx - w//2))
-        geom.set('y', str(cy - h//2))
-        geom.set('width', str(w))
-        geom.set('height', str(h))
+        # Si es imagen, reducimos un poco el alto geométrico para que el texto debajo no sume muchísimo
+        if image_url:
+            geom.set('width', str(60))
+            geom.set('height', str(60))
+            geom.set('x', str(cx - 30))
+            geom.set('y', str(cy - 30))
+        else:
+            geom.set('x', str(cx - w//2))
+            geom.set('y', str(cy - h//2))
+            geom.set('width', str(w))
+            geom.set('height', str(h))
+            
         geom.set('as', 'geometry')
         
         return node_id, stroke_color
