@@ -62,7 +62,7 @@ class MapaMentalGenerator:
             "generator": "search",
             "gsrsearch": f"intitle:{clean_query} OR {clean_query}",
             "gsrnamespace": 6,  # 6 es el namespace para Archivos/Imágenes en Wikipedia
-            "gsrlimit": 1,
+            "gsrlimit": 5, # Pedimos 5 para poder filtrar videos o PDFs
             "prop": "imageinfo",
             "iiprop": "url"
         }
@@ -76,11 +76,13 @@ class MapaMentalGenerator:
                 data = json.loads(response.read().decode())
                 if 'query' in data and 'pages' in data['query']:
                     pages = data['query']['pages']
+                    valid_exts = ('.jpg', '.jpeg', '.png', '.svg', '.gif')
                     for page_id in pages:
                         if 'imageinfo' in pages[page_id]:
                             img_url = pages[page_id]['imageinfo'][0]['url']
-                            self.image_cache[query] = img_url
-                            return img_url
+                            if img_url.lower().endswith(valid_exts):
+                                self.image_cache[query] = img_url
+                                return img_url
         except Exception as e:
             pass
             
