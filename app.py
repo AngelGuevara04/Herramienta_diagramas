@@ -75,8 +75,6 @@ def generar_ia():
         return jsonify({"error": "Faltan datos"}), 400
         
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
         if tipo == 'mapa_conceptual':
             prompt = f"""
             Convierte el siguiente texto en una estructura estricta para un mapa conceptual.
@@ -106,8 +104,19 @@ def generar_ia():
             {texto}
             """
             
-        response = model.generate_content(prompt)
-        resultado = response.text.strip()
+        resultado = None
+        for m_name in ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']:
+            try:
+                model = genai.GenerativeModel(m_name)
+                response = model.generate_content(prompt)
+                resultado = response.text.strip()
+                break
+            except Exception as e:
+                print(f"Error con modelo {m_name}: {e}")
+                continue
+                
+        if not resultado:
+            return jsonify({"error": "No se pudo generar la estructura. Verifica que tu API Key tenga acceso a los modelos de Gemini."}), 500
         
         # Limpiar posibles bloques markdown si la IA los pone a pesar de la instrucción
         if resultado.startswith("```"):

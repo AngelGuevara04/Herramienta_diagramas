@@ -1,3 +1,5 @@
+import math
+import os
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import urllib.request
@@ -7,13 +9,39 @@ import json
 class MapaMentalGenerator:
     def __init__(self):
         self.id_counter = 2
-        self.node_width = 160
-        self.node_height = 80
-        self.horizontal_spacing = 220
-        self.vertical_spacing = 20
-    
+        self.node_width = 120
+        self.node_height = 120
+        self.radius_step = 250
+        self.image_cache = {}
+        
+        # Intentamos configurar Gemini para mejorar búsquedas de imágenes si hay API key
+        self.gemini_model = None
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                # Usar flash por velocidad
+                self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+            except:
+                pass
+
+    def get_search_query(self, concept):
+        # Si tenemos IA, traducimos el concepto a un objeto visual concreto en inglés
+        if self.gemini_model:
+            try:
+                prompt = f'Translate this abstract concept into a single, concrete, highly visual physical object noun in English for an image search. Concept: "{concept}". Just return the noun (1-2 words max), no quotes or punctuation.'
+                response = self.gemini_model.generate_content(prompt)
+                return response.text.strip()
+            except:
+                pass
+        return concept.split(":")[0].strip()
+
     def fetch_image_url(self, query):
-        clean_query = query.split(":")[0].strip()
+        if query in self.image_cache:
+            return self.image_cache[query]
+            
+        clean_query = self.get_search_query(query)
         if len(clean_query) > 50:
             clean_query = clean_query[:50]
             
@@ -39,9 +67,12 @@ class MapaMentalGenerator:
                     pages = data['query']['pages']
                     for page_id in pages:
                         if 'imageinfo' in pages[page_id]:
-                            return pages[page_id]['imageinfo'][0]['url']
+                            img_url = pages[page_id]['imageinfo'][0]['url']
+                            self.image_cache[query] = img_url
+                            return img_url
         except Exception as e:
             pass
+        self.image_cache[query] = None
         return None
 
     def _convert_dict_to_tree(self, node_dict, level=0):
@@ -73,14 +104,7 @@ class MapaMentalGenerator:
             result.append(node)
         return result
 
-    def calculate_subtree_height(self, node):
-        if not node.get('children'):
-            return self.node_height
-        children_height = sum(self.calculate_subtree_height(child) for child in node['children'])
-        total_spacing = (len(node['children']) - 1) * self.vertical_spacing
-        return max(self.node_height, children_height + total_spacing)
-
-    def draw_node(self, cells, node, x, y):
+    def draw_node(self, cells, node, cx, cy):
         concept = node.get('concept', '')
         image_url = node.get('image_url')
         node_id = self.id_counter
@@ -100,40 +124,40 @@ class MapaMentalGenerator:
         cell = ET.SubElement(cells, 'mxCell')
         cell.set('id', str(node_id))
         
+        # CSS avanzado para recorte de imagen (object-fit cover y border-radius 50% circular)
         if image_url:
-            html_value = f'<div style="text-align:center"><img src="{image_url}" width="40" height="40" style="border-radius:5px; margin-bottom:5px;"/><br><b>{concept}</b></div>'
+            html_value = f'<div style="text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;"><img src="{image_url}" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:5px; border: 2px solid {stroke_color};"/><b style="font-size:11px;">{concept}</b></div>'
         else:
-            html_value = f'<div style="text-align:center"><b>{concept}</b></div>'
+            html_value = f'<div style="text-align:center; padding:10px;"><b>{concept}</b></div>'
             
-        # Forma más elíptica o redondeada para los mapas mentales
-        rounded_style = "rounded=1;arcSize=30;" if node.get('level',0) > 0 else "shape=ellipse;"
-        
-        cell.set('style', f'{rounded_style}whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;')
+        # Forma circular pura para mapas mentales radiales
+        cell.set('style', f'shape=ellipse;whiteSpace=wrap;html=1;fillColor={fill_color};strokeColor={stroke_color};strokeWidth=2;align=center;verticalAlign=middle;')
         cell.set('value', html_value)
         cell.set('vertex', '1')
         cell.set('parent', '1')
         
         geom = ET.SubElement(cell, 'mxGeometry')
-        geom.set('x', str(x))
-        geom.set('y', str(y))
         
-        # El nodo central puede ser un poco más grande
+        # Ajuste de tamaño
+        w = self.node_width
+        h = self.node_height
         if node.get('level', 0) == 0:
-            geom.set('width', str(self.node_width + 40))
-            geom.set('height', str(self.node_height + 20))
-        else:
-            geom.set('width', str(self.node_width))
-            geom.set('height', str(self.node_height))
+            w += 40
+            h += 40
+            
+        geom.set('x', str(cx - w//2))
+        geom.set('y', str(cy - h//2))
+        geom.set('width', str(w))
+        geom.set('height', str(h))
         geom.set('as', 'geometry')
         
         return node_id, stroke_color
 
-    def draw_connector(self, cells, source_id, target_id, sx, sy, tx, ty, stroke_color):
+    def draw_connector(self, cells, source_id, target_id, stroke_color):
         line_id = self.id_counter
         self.id_counter += 1
         line_cell = ET.SubElement(cells, 'mxCell')
         line_cell.set('id', str(line_id))
-        # Curvo como un mapa mental
         line_cell.set('style', f'edgeStyle=bezierEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor={stroke_color};')
         line_cell.set('edge', '1')
         line_cell.set('parent', '1')
@@ -144,32 +168,48 @@ class MapaMentalGenerator:
         line_geom.set('relative', '1')
         line_geom.set('as', 'geometry')
 
-    def process_branch(self, children_list, start_x, center_y, cells, parent_id, direction=1):
-        """ direction: 1 para crecer a la derecha, -1 para crecer a la izquierda """
-        if not children_list:
-            return
+    def process_radial_branch(self, node_list, center_x, center_y, cells, parent_id, angle_start, angle_end, current_radius):
+        """ Distribuye los nodos dentro del sector circular definido por angle_start y angle_end """
+        n = len(node_list)
+        if n == 0: return
+        
+        # El ángulo total disponible para estos hermanos
+        total_angle = angle_end - angle_start
+        # Dividimos el sector en N sub-sectores iguales
+        angle_step = total_angle / n
+        
+        for i, child in enumerate(node_list):
+            # El sector para este hijo
+            child_angle_start = angle_start + i * angle_step
+            child_angle_end = child_angle_start + angle_step
             
-        children_heights = [self.calculate_subtree_height(child) for child in children_list]
-        total_height = sum(children_heights) + (len(children_list) - 1) * self.vertical_spacing
-        
-        current_y = center_y - total_height // 2
-        
-        for i, child in enumerate(children_list):
-            child_height = children_heights[i]
-            child_y = current_y + child_height // 2 - self.node_height // 2
+            # El ángulo exacto donde se ubica es el medio de su sector
+            mid_angle = (child_angle_start + child_angle_end) / 2
+            
+            # Calcular X e Y con trigonometría
+            child_x = center_x + current_radius * math.cos(mid_angle)
+            child_y = center_y + current_radius * math.sin(mid_angle)
             
             # Dibujar nodo
-            child_id, s_color = self.draw_node(cells, child, start_x, child_y)
+            child_id, s_color = self.draw_node(cells, child, child_x, child_y)
             
-            # Dibujar conector desde padre
-            self.draw_connector(cells, parent_id, child_id, 0, 0, 0, 0, s_color)
+            # Dibujar conector al padre
+            self.draw_connector(cells, parent_id, child_id, s_color)
             
-            # Recursion para los nietos, misma dirección
+            # Recursion para los nietos:
+            # Usan el sector [child_angle_start, child_angle_end] y aumentan el radio
             if child.get('children'):
-                next_x = start_x + (self.horizontal_spacing * direction)
-                self.process_branch(child['children'], next_x, child_y + self.node_height//2, cells, child_id, direction)
-                
-            current_y += child_height + self.vertical_spacing
+                # Dejamos un margen del 10% en los bordes del sector para que no choquen con ramas vecinas
+                margin = angle_step * 0.1
+                self.process_radial_branch(
+                    child['children'], 
+                    center_x, center_y, # El centro del universo sigue siendo el mismo para polar
+                    cells, 
+                    child_id, 
+                    child_angle_start + margin, 
+                    child_angle_end - margin, 
+                    current_radius + self.radius_step
+                )
 
     def generate_drawio_xml(self, dict_structure):
         self.id_counter = 2
@@ -180,8 +220,8 @@ class MapaMentalGenerator:
         diagram.set('name', 'Mapa Mental')
         
         model = ET.SubElement(diagram, 'mxGraphModel')
-        model.set('dx', '1422')
-        model.set('dy', '794')
+        model.set('dx', '2000')
+        model.set('dy', '2000')
         model.set('grid', '1')
         model.set('gridSize', '10')
         model.set('guides', '1')
@@ -189,7 +229,7 @@ class MapaMentalGenerator:
         model.set('connect', '1')
         model.set('arrows', '1')
         model.set('fold', '1')
-        model.set('page', '1')
+        model.set('page', '0') # Infinito
         model.set('pageScale', '1')
         
         root_cell = ET.SubElement(model, 'root')
@@ -203,39 +243,23 @@ class MapaMentalGenerator:
         if tree:
             root_node = tree[0]
             
-            # Centro del sol
-            center_x = 800
-            center_y = 600
+            # Centro absoluto del sol
+            center_x = 2000
+            center_y = 2000
             
             root_id, _ = self.draw_node(root_cell, root_node, center_x, center_y)
             
             children = root_node.get('children', [])
             
-            # Dividir los hijos mitad a la derecha y mitad a la izquierda
-            mid = (len(children) + 1) // 2
-            right_children = children[:mid]
-            left_children = children[mid:]
-            
-            # Procesar derecha
-            if right_children:
-                self.process_branch(
-                    right_children, 
-                    center_x + self.node_width + 40 + self.horizontal_spacing - 100, 
-                    center_y + self.node_height // 2, 
+            if children:
+                # Todo el círculo: de 0 a 2*PI (360 grados)
+                self.process_radial_branch(
+                    children, 
+                    center_x, center_y, 
                     root_cell, 
                     root_id, 
-                    direction=1
-                )
-                
-            # Procesar izquierda
-            if left_children:
-                self.process_branch(
-                    left_children, 
-                    center_x - self.horizontal_spacing, 
-                    center_y + self.node_height // 2, 
-                    root_cell, 
-                    root_id, 
-                    direction=-1
+                    0, 2 * math.pi, 
+                    self.radius_step
                 )
             
         xml_str = ET.tostring(root_elem, encoding='utf-8')
