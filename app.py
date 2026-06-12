@@ -1,12 +1,14 @@
 import os
 import ast
 import io
+import json
 import google.generativeai as genai
 from flask import Flask, request, render_template, send_file, jsonify
 
 from generadores.CuadroSinoptico import generar_cuadro_sinoptico
 from generadores.MapaConceptual import generar_mapa_conceptual
 from generadores.MapaMental import generar_mapa_mental
+from generadores.Enriquecedor import enriquecer_xml
 
 app = Flask(__name__)
 
@@ -63,6 +65,34 @@ def generar_manual():
         
     except Exception as e:
         return f"Error al procesar: {str(e)}", 500
+
+@app.route('/enriquecer_drawio', methods=['POST'])
+def enriquecer_drawio():
+    if 'file' not in request.files:
+        return jsonify({"error": "No se envió ningún archivo"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No se seleccionó ningún archivo"}), 400
+        
+    if file and (file.filename.endswith('.drawio') or file.filename.endswith('.xml')):
+        try:
+            xml_content = file.read().decode('utf-8')
+            enriquecido_xml = enriquecer_xml(xml_content)
+            
+            buffer = io.BytesIO()
+            buffer.write(enriquecido_xml.encode('utf-8'))
+            buffer.seek(0)
+            
+            return send_file(
+                buffer,
+                as_attachment=True,
+                download_name=f"enriquecido_{file.filename}",
+                mimetype='application/xml'
+            )
+        except Exception as e:
+            return jsonify({"error": "Error procesando el archivo: " + str(e)}), 500
+            
+    return jsonify({"error": "Formato de archivo inválido. Usa .drawio o .xml"}), 400
 
 AVAILABLE_MODELS = None
 

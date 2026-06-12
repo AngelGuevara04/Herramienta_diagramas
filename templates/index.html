@@ -271,6 +271,29 @@
                 <button type="submit" class="btn">Generar y Descargar .drawio</button>
             </form>
         </div>
+        <!-- Sección Enriquecedor Draw.io -->
+        <div class="mt-8 border-t border-gray-200 pt-8" id="enrich-section">
+            <h2 class="text-2xl font-bold mb-4 text-indigo-700">Magia: Enriquecer Draw.io con Imágenes</h2>
+            <p class="text-gray-600 mb-4">¿Ya tienes un mapa en Draw.io? Súbelo aquí y la IA analizará cada uno de tus cuadros y les agregará automáticamente imágenes increíbles respetando todo tu diseño original.</p>
+            
+            <form id="enrich-form" class="space-y-4 bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Sube tu archivo .drawio</label>
+                    <input type="file" id="drawio-file" accept=".drawio,.xml" class="w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-md file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-indigo-50 file:text-indigo-700
+                        hover:file:bg-indigo-100 cursor-pointer" required>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition duration-300">
+                    <span id="enrich-text">Enriquecer con Imágenes y Descargar</span>
+                    <span id="enrich-spinner" class="hidden"><i class="fas fa-spinner fa-spin"></i> Analizando y buscando...</span>
+                </button>
+            </form>
+            <div id="enrich-error" class="mt-4 text-red-600 hidden"></div>
+        </div>
+
     </div>
 
     <script>
@@ -305,7 +328,6 @@
             loading.style.display = 'block';
 
             try {
-                // 1. Pedir a la IA que genere la estructura
                 const response = await fetch('/generar_ia', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -319,13 +341,11 @@
                         throw new Error(data.error || 'Error desconocido');
                     } catch (e) {
                         if (e.message.includes('Error desconocido') || e.message === text) throw e;
-                        // Si no es JSON (ej. HTML por timeout de Render)
                         throw new Error(`Error de servidor (${response.status}): El proceso tardó demasiado o falló internamente.`);
                     }
                 }
 
                 const data = await response.json();
-
                 const estructura = data.resultado;
 
                 // 2. Pasar la estructura generada al formulario manual y enviarlo para descargar
@@ -341,6 +361,66 @@
                 loading.style.display = 'none';
             }
         }
+
+        // Manejo del Enriquecedor
+        document.getElementById('enrich-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btnText = document.getElementById('enrich-text');
+            const spinner = document.getElementById('enrich-spinner');
+            const errorDiv = document.getElementById('enrich-error');
+            const btn = e.target.querySelector('button');
+            const fileInput = document.getElementById('drawio-file');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                return;
+            }
+
+            btn.disabled = true;
+            if(btnText) btnText.style.display = 'none';
+            if(spinner) spinner.style.display = 'inline-block';
+            if(errorDiv) errorDiv.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/enriquecer_drawio', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.error || 'Error en el servidor');
+                    } catch (e) {
+                        throw new Error(text || 'Error en el servidor');
+                    }
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `enriquecido_${fileInput.files[0].name}`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } catch (error) {
+                if(errorDiv) {
+                    errorDiv.innerText = error.message;
+                    errorDiv.style.display = 'block';
+                } else {
+                    alert(error.message);
+                }
+            } finally {
+                btn.disabled = false;
+                if(btnText) btnText.style.display = 'inline-block';
+                if(spinner) spinner.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
