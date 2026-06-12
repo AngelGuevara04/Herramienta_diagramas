@@ -27,9 +27,14 @@ def generar_manual():
     try:
         if tipo in ['mapa_mental', 'cuadro_sinoptico']:
             try:
+                # Try JSON first
                 estructura = json.loads(contenido_str)
-            except Exception as e:
-                return jsonify({"error": f"JSON inválido: {str(e)}"}), 400
+            except Exception as e_json:
+                try:
+                    # Fallback to Python dictionary evaluation (supports comments and single quotes)
+                    estructura = ast.literal_eval(contenido_str)
+                except Exception as e_ast:
+                    return jsonify({"error": f"Formato inválido. No es JSON válido ({str(e_json)}) ni diccionario Python válido ({str(e_ast)})"}), 400
                 
             if tipo == 'mapa_mental':
                 xml_generado = generar_mapa_mental(estructura)
