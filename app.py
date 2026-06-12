@@ -48,7 +48,10 @@ def generar_manual():
         return jsonify({"error": f"Error al generar: {str(e)}"}), 500
         
     if xml_generado:
-        return jsonify({"xml": xml_generado})
+        xml_clean = xml_generado.strip()
+        if xml_clean.startswith('<?xml'):
+            xml_clean = xml_clean.split('?>', 1)[-1].strip()
+        return jsonify({"xml": xml_clean})
         
     return jsonify({"error": "Tipo de diagrama no soportado"}), 400
 
