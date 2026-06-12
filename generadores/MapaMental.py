@@ -306,8 +306,7 @@ class MapaMentalGenerator:
         cell1.set('id', '1')
         cell1.set('parent', '0')
         
-        # Primero buscamos todas las imágenes de golpe para evitar timeout
-        self.prefetch_images(dict_structure)
+        # Eliminada la autogeneración de imágenes. El usuario lo hará manualmente.
         
         tree = self._convert_dict_to_tree(dict_structure)
         if tree:
