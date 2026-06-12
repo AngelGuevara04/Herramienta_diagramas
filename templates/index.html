@@ -268,25 +268,23 @@
             }
         });
 
+        let isDrawioLoaded = false;
+        
         function loadXmlToDrawio(xml) {
+            if (isDrawioLoaded) return;
+            
             const iframe = document.getElementById('drawio-frame');
             
             // Extracción quirúrgica: garantizamos que inicie EXACTAMENTE en <mxfile
             let cleanXml = xml;
-            if (typeof cleanXml !== 'string') {
-                alert("CRÍTICO: cleanXml no es un string! Es tipo: " + typeof cleanXml);
-                return;
-            }
+            if (typeof cleanXml !== 'string') return;
             
             const match = cleanXml.match(/<mxfile[\s\S]*/);
             if (match) {
                 cleanXml = match[0];
-            } else {
-                alert("CRÍTICO: El XML no contiene <mxfile. Primeros 50 chars: " + cleanXml.substring(0, 50));
             }
             
-            alert("A PUNTO DE ENVIAR A DRAWIO. Primeros caracteres: \n" + cleanXml.substring(0, 50));
-            console.log("Enviando a Draw.io:", cleanXml);
+            isDrawioLoaded = true; // Evitar doble carga
             
             iframe.contentWindow.postMessage(JSON.stringify({
                 action: 'load',
@@ -326,6 +324,7 @@
 
                 const data = await response.json();
                 currentXml = data.xml;
+                isDrawioLoaded = false;
 
                 // Extraer conceptos del XML usando Regex simple para el panel
                 let conceptos = [];
