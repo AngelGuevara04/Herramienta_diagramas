@@ -270,10 +270,12 @@
 
         function loadXmlToDrawio(xml) {
             const iframe = document.getElementById('drawio-frame');
-            // Backend ya limpia el XML, pero nos aseguramos por si acaso
-            let cleanXml = xml.trim();
-            if (cleanXml.startsWith('<?xml')) {
-                cleanXml = cleanXml.replace(/^<\?xml[^>]*>\s*/i, '');
+            
+            // Extracción quirúrgica: garantizamos que inicie EXACTAMENTE en <mxfile
+            let cleanXml = xml;
+            const match = cleanXml.match(/<mxfile[\s\S]*/);
+            if (match) {
+                cleanXml = match[0];
             }
             
             console.log("Enviando a Draw.io (primeros 100 chars):", cleanXml.substring(0, 100));
