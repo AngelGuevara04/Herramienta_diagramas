@@ -33,71 +33,102 @@ class MapaMentalGenerator:
             except:
                 pass
 
-    def get_search_query(self, concept):
-        # Si tenemos IA, traducimos el concepto a un objeto visual concreto en inglés
+    def prefetch_images(self, node_dict):
+        # 1. Recolectar todos los conceptos que necesitan imagen
+        concepts = set()
+        
+        def collect(d, level=0):
+            for i, (key, value) in enumerate(d.items()):
+                if level <= 1 or (level > 1 and i % 3 == 0):
+                    concepts.add(str(key))
+                
+                if isinstance(value, dict):
+                    collect(value, level + 1)
+                elif isinstance(value, list):
+                    for j, item in enumerate(value):
+                        if (level + 1) <= 1 or ((level + 1) > 1 and j % 3 == 0):
+                            concepts.add(str(item))
+                elif value:
+                    if (level + 1) <= 1:
+                        concepts.add(str(value))
+                        
+        collect(node_dict)
+        concepts_list = list(concepts)
+        
+        if not concepts_list:
+            return
+            
+        # 2. Traducción en lote usando Gemini (1 sola llamada de red)
+        translations = {}
         if self.gemini_model:
             try:
-                prompt = f'Translate this abstract concept into a single, concrete, highly visual physical object noun in English for an image search. Concept: "{concept}". Just return the noun (1-2 words max), no quotes or punctuation.'
+                prompt = "Translate the following abstract concepts into single, concrete, highly visual physical object nouns in English for Wikipedia image searches. Return ONLY a valid JSON dictionary where keys are the exact concepts and values are the English nouns. No markdown.\n\n"
+                prompt += json.dumps(concepts_list)
                 response = self.gemini_model.generate_content(prompt)
-                return response.text.strip()
+                
+                text = response.text.strip()
+                if text.startswith("```json"): text = text[7:]
+                if text.startswith("```"): text = text[3:]
+                if text.endswith("```"): text = text[:-3]
+                translations = json.loads(text.strip())
             except:
                 pass
+                
+        # 3. Búsqueda en Wikipedia concurrente
+        import concurrent.futures
         
-        # Si falla la IA, tomamos solo las primeras 2 palabras para tener más chance de encontrar algo
-        words = concept.split()
-        return " ".join(words[:2]).strip(":")
+        def fetch_wiki(concept):
+            clean_query = translations.get(concept)
+            if not clean_query:
+                clean_query = " ".join(concept.split()[:2]).strip(":")
+                
+            if len(clean_query) > 50:
+                clean_query = clean_query[:50]
+                
+            url = "https://commons.wikimedia.org/w/api.php"
+            params = {
+                "action": "query",
+                "format": "json",
+                "generator": "search",
+                "gsrsearch": f"intitle:{clean_query} OR {clean_query}",
+                "gsrnamespace": 6,
+                "gsrlimit": 5,
+                "prop": "imageinfo",
+                "iiprop": "url"
+            }
+            
+            query_string = urllib.parse.urlencode(params)
+            full_url = f"{url}?{query_string}"
+            
+            try:
+                req = urllib.request.Request(full_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    data = json.loads(response.read().decode())
+                    if 'query' in data and 'pages' in data['query']:
+                        pages = data['query']['pages']
+                        valid_exts = ('.jpg', '.jpeg', '.png', '.svg', '.gif')
+                        for page_id in pages:
+                            if 'imageinfo' in pages[page_id]:
+                                img_url = pages[page_id]['imageinfo'][0]['url']
+                                if img_url.lower().endswith(valid_exts):
+                                    self.image_cache[concept] = img_url
+                                    return
+            except Exception:
+                pass
+            self.image_cache[concept] = None
 
-    def fetch_image_url(self, query):
-        if query in self.image_cache:
-            return self.image_cache[query]
-            
-        clean_query = self.get_search_query(query)
-        if len(clean_query) > 50:
-            clean_query = clean_query[:50]
-            
-        url = "https://commons.wikimedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "format": "json",
-            "generator": "search",
-            "gsrsearch": f"intitle:{clean_query} OR {clean_query}",
-            "gsrnamespace": 6,  # 6 es el namespace para Archivos/Imágenes en Wikipedia
-            "gsrlimit": 5, # Pedimos 5 para poder filtrar videos o PDFs
-            "prop": "imageinfo",
-            "iiprop": "url"
-        }
-        
-        query_string = urllib.parse.urlencode(params)
-        full_url = f"{url}?{query_string}"
-        
-        try:
-            req = urllib.request.Request(full_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=3) as response:
-                data = json.loads(response.read().decode())
-                if 'query' in data and 'pages' in data['query']:
-                    pages = data['query']['pages']
-                    valid_exts = ('.jpg', '.jpeg', '.png', '.svg', '.gif')
-                    for page_id in pages:
-                        if 'imageinfo' in pages[page_id]:
-                            img_url = pages[page_id]['imageinfo'][0]['url']
-                            if img_url.lower().endswith(valid_exts):
-                                self.image_cache[query] = img_url
-                                return img_url
-        except Exception as e:
-            pass
-            
-        self.image_cache[query] = None
-        return None
+        # Ejecutar peticiones a Wikipedia en paralelo (reduce el tiempo de 30s a 2s)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            executor.map(fetch_wiki, concepts_list)
 
     def _convert_dict_to_tree(self, node_dict, level=0):
         result = []
         for i, (key, value) in enumerate(node_dict.items()):
             
-            # Imágenes seguras en el tema principal y primer nivel.
-            # En subtemas profundos, aplicamos imagen cada 3 cuadros para cumplir "cada 2 o 3 cuadros" y evitar timeout
+            # Ya no hacemos fetch_image_url aquí. Directo de la cache.
             image_url = None
             if level <= 1 or (level > 1 and i % 3 == 0):
-                image_url = self.fetch_image_url(str(key))
+                image_url = self.image_cache.get(str(key))
                 
             node = {
                 'concept': str(key),
@@ -111,7 +142,7 @@ class MapaMentalGenerator:
                 for j, item in enumerate(value):
                     child_image = None
                     if (level + 1) <= 1 or ((level + 1) > 1 and j % 3 == 0):
-                        child_image = self.fetch_image_url(str(item))
+                        child_image = self.image_cache.get(str(item))
                     node['children'].append({
                         'concept': str(item),
                         'children': [],
@@ -119,10 +150,9 @@ class MapaMentalGenerator:
                         'image_url': child_image
                     })
             elif value:
-                # Si es un valor simple hijo directo (raro en el dict generado por IA, pero posible)
                 child_image = None
                 if (level + 1) <= 1:
-                    child_image = self.fetch_image_url(str(value))
+                    child_image = self.image_cache.get(str(value))
                 node['children'].append({
                     'concept': str(value),
                     'children': [],
@@ -275,6 +305,9 @@ class MapaMentalGenerator:
         cell1 = ET.SubElement(root_cell, 'mxCell')
         cell1.set('id', '1')
         cell1.set('parent', '0')
+        
+        # Primero buscamos todas las imágenes de golpe para evitar timeout
+        self.prefetch_images(dict_structure)
         
         tree = self._convert_dict_to_tree(dict_structure)
         if tree:
