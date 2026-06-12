@@ -270,10 +270,16 @@
 
         function loadXmlToDrawio(xml) {
             const iframe = document.getElementById('drawio-frame');
+            // Limpiar posibles espacios en blanco o declaraciones que rompan Draw.io
+            let cleanXml = xml.trim();
+            if (cleanXml.startsWith('<?xml')) {
+                cleanXml = cleanXml.replace(/^<\?xml[^>]*>\s*/i, '');
+            }
+            
             iframe.contentWindow.postMessage(JSON.stringify({
                 action: 'load',
                 autosave: 1,
-                xml: xml
+                xml: cleanXml
             }), '*');
         }
 
